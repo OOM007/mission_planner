@@ -1,0 +1,47 @@
+mission_planner:
+  ros__parameters:
+    debug_waypoint_publishing: true
+    battery_check_enabled: false
+
+    do_mission_on_start: true
+    do_mission_once: true
+
+    battery_warn_threshold: 15.0 # in percentage from 1..100
+    battery_critical_threshold: 5.0
+
+    approach_distance: 1.0 # hovering altitude above objective
+    waypoint_reached_tolerance: 0.2
+    
+    takeoff_altitude: 2.0 # hovering altitude after takeoff
+    land_altitude: 0.0 # landing pad altitude
+    search_altitude: 1.0
+    transit_altitude: 2.0
+
+    target_hover_time: 20.0
+
+    search:
+      center:
+        x: 0.0
+        y: 0.0
+
+      start_pos: # in the grid coordinate frame
+        x: -1
+        y: 0
+      
+      zero_offset_angle: 0.0
+      half_extent: 1 # half-width of a search area
+      step: 1
+      max_waypoints: 20
+      max_search_time: 30.0
+
+    home:
+      position:
+        x: 0.0
+        y: 0.0
+        z: 0.0
+
+    transit: # relative to home-takeoff position
+      position:
+        x: 2.0
+        y: 0.0
+        z: 0.0
