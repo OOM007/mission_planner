@@ -131,9 +131,21 @@ private:
   bool current_vehicle_armed_{false};
   bool ready_to_takeoff_{false};
   bool mission_executed_{false};
-
+  
+  //target detection and validation
   bool search_in_progress_{false};
   bool target_found_{false};
+  bool target_spotted_{false};
+
+  bool target_candidate_initialized_{false};
+
+  Eigen::Vector3f target_candidate_position_{0.0f, 0.0f, 0.0f};
+  rclcpp::Time last_processed_detection_time_{};
+  rclcpp::Time target_candidate_first_seen_{};
+
+  int target_candidate_hits_{0};
+  int target_candidate_consequtive_hits_{0};
+  int target_candidate_misses_{0};
 
   bool map_odom_initialized_{false};
   rclcpp::Time last_map_odom_update_time_{0,0,RCL_ROS_TIME};

@@ -81,6 +81,7 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options) :
 
     search_in_progress_ = false;
     target_found_ = false;
+    target_spotted_ = false;
 
     decision_timer_ = create_wall_timer(1s, std::bind(&MissionPlanner::mainDecisionLoop, this));
 
@@ -177,7 +178,7 @@ void MissionPlanner::cbTargetDetection(const geometry_msgs::msg::PointStamped::S
         current_target_.position << (float)p_out.point.x, (float)p_out.point.y, (float)p_out.point.z;
 
         current_target_.detection_time = now();
-        target_found_ = true;
+        target_spotted_ = true;
 
         current_target_.distance_to_target = distance(
             Eigen::Vector3f(current_pose_.pose.position.x, current_pose_.pose.position.y, current_pose_.pose.position.z),
@@ -468,21 +469,117 @@ void MissionPlanner::executeSEARCH()
 
 void MissionPlanner::executeTARGET_DETECTED()
 {
-    if (phase_iteration_count_ >= 1) {
-        return;
+    const int required_hits = 5;
+    const int required_consecutive_hits = 3;
+    const int allowed_misses = 5;
+    const float max_confirm_time_s = 3.0f;
+    const float max_stale_detection_s = 1.0f;
+    
+    const float match_radius = std::max(0.25f, static_cast<float>(cfg_.waypoint_reached_tolerance) * 2.0f);
+
+    if (phase_iteration_count_ < 1) {
+        tf2::Quaternion q(
+            current_pose_.pose.orientation.x,
+            current_pose_.pose.orientation.y,
+            current_pose_.pose.orientation.z,
+            current_pose_.pose.orientation.w
+        );
+
+        tf2::Matrix3x3 m(q);
+        double roll = 0.0, pitch = 0.0, yaw = 0.0;
+        m.getRPY(roll, pitch, yaw);
+
+        publishWaypoint(Eigen::Vector3f(
+                current_pose_.pose.position.x,
+                current_pose_.pose.position.y,
+                current_pose_.pose.position.z), yaw, 0.0f);
+
+        target_found_ = false;
+        target_spotted_ = false;
+        target_candidate_initialized_ = false;
+        target_candidate_hits_ = 0;
+        target_candidate_consequtive_hits_ = 0;
+        target_candidate_misses_ = 0;
+        last_processed_detection_time_ = rclcpp::Time(0, 0, RCL_ROS_TIME);
+        target_candidate_first_seen_ = now();
     }
 
-    //TODO: make a confidence check
+    const bool have_new_detection = (
+        target_spotted_ &&
+        (last_processed_detection_time_.nanoseconds() == 0 ||
+        current_target_.detection_time > last_processed_detection_time_)
+    );
 
-    publishWaypoint(Eigen::Vector3f(
-        current_pose_.pose.position.x, 
-        current_pose_.pose.position.y, 
-        current_pose_.pose.position.z), 0.0f, 0.0f);
+    const rclcpp::Time now_t = now();
 
-    if (phase_iteration_count_++ % 5 == 0) {
-        RCLCPP_INFO(get_logger(), "Analyzing target: confidence=%.2f, distance=%.1f",
-            current_target_.confidence, current_target_.distance_to_target);
+    if (have_new_detection) {
+        last_processed_detection_time_ = current_target_.detection_time;
+        const Eigen::Vector3f det = current_target_.position;
+
+        if (!target_candidate_initialized_) {
+            target_candidate_initialized_ = true;
+            target_candidate_position_ = det;
+            target_candidate_first_seen_ = now_t;
+            
+            target_candidate_hits_ = 1;
+            target_candidate_consequtive_hits_ = 0;
+            target_candidate_misses_ = 0;
+        } else {
+            const float d = distance(target_candidate_position_, det);
+
+            if (d <= match_radius) {
+                target_candidate_position_ = 0.7f * target_candidate_position_ + 0.3 * det;
+
+                target_candidate_hits_++;
+                target_candidate_consequtive_hits_++;
+                target_candidate_misses_ = 0;
+            }
+        } 
+    } else {
+        target_candidate_misses_++;
+        target_candidate_consequtive_hits_ = 0;
     }
+
+    if (target_spotted_) {
+        const double staleness_s = (now_t - current_target_.detection_time).seconds();
+        if (staleness_s > max_stale_detection_s) {
+            target_spotted_ = false;
+        }
+    }
+
+    const double confirm_age_s = (now_t - target_candidate_first_seen_).seconds();
+
+    if ((target_candidate_initialized_ && confirm_age_s > max_confirm_time_s) ||
+        target_candidate_misses_ > allowed_misses) 
+        {
+            RCLCPP_WARN(get_logger(), "Target confirmation failed, falling back to SEARCH state");
+            
+            target_spotted_ = false;
+            target_candidate_initialized_ = false;
+            transitionToPhase(MissionPhase::SEARCH);
+            return;
+        }
+ 
+    if (target_candidate_initialized_ &&
+        (target_candidate_hits_ >= required_hits ||
+        target_candidate_consequtive_hits_ >= required_consecutive_hits)) 
+        {
+            target_found_ = true;
+            current_target_.position = target_candidate_position_;
+            current_target_.detection_time = now();
+
+            RCLCPP_INFO(get_logger(), "Target confirmed at (%.2f, %.2f, %.2f)", 
+                current_target_.position.x(), current_target_.position.y(), current_target_.position.z());
+            
+            if (context_.battery_percentage > (float)cfg_.battery_warn_threshold) {
+            transitionToPhase(MissionPhase::APPROACH);
+            } else {
+                transitionToPhase(MissionPhase::RETURN);
+            }
+            return;
+        }
+
+    phase_iteration_count_++;
 }
 
 void MissionPlanner::executeAPPROACH()
@@ -821,7 +918,7 @@ void MissionPlanner::updateMissionPhase()
             break;
         }
         case MissionPhase::SEARCH:
-            if (target_found_) {
+            if (target_spotted_) {
                 transitionToPhase(MissionPhase::TARGET_DETECTED);
             } else if (getTimeSincePhaseStart() > cfg_.max_search_time) {
                 transitionToPhase(MissionPhase::RETURN);
@@ -829,10 +926,18 @@ void MissionPlanner::updateMissionPhase()
             break;
 
         case MissionPhase::TARGET_DETECTED:
-            if (context_.battery_percentage > (float)cfg_.battery_warn_threshold){
-                transitionToPhase(MissionPhase::APPROACH);
-            } else {
-                transitionToPhase(MissionPhase::RETURN);
+            if (target_found_) {
+                if (context_.battery_percentage > (float)cfg_.battery_warn_threshold) {
+                    transitionToPhase(MissionPhase::APPROACH);
+                } else {
+                    transitionToPhase(MissionPhase::RETURN);
+                }
+                return;
+            }
+
+            if (getTimeSincePhaseStart() > 5.0f && !target_spotted_) { // TODO: add to the config
+                transitionToPhase(MissionPhase::SEARCH);
+                return;
             }
             break;
 
