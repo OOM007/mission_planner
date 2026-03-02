@@ -150,7 +150,7 @@ void MissionPlanner::publishWaypointList(const std::vector<Eigen::Vector3f> & wa
 // callbacks
 void MissionPlanner::cbTargetDetection(const geometry_msgs::msg::PointStamped::SharedPtr msg) 
 {
-    const std::string target_frame = "map";
+    const std::string target_frame = current_pose_.header.frame_id;
 
     geometry_msgs::msg::PointStamped p_in = *msg;
     geometry_msgs::msg::PointStamped p_out;
@@ -350,7 +350,7 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
 // execution logic
 void MissionPlanner::executeIDLE()
 {
-    if (!current_vehicle_armed_ && (int)(now() - phase_start_time_).seconds() % 5 == 0) {
+    if (!current_vehicle_armed_ && (int)(now() - phase_start_time_).seconds() % 5 == 0 && (!cfg_.do_mission_once || !mission_executed_)) {
         RCLCPP_INFO(get_logger(), "Vehicle is disarmed - waiting for arming to start mission");
                 
         mission_sequencer::msg::MissionRequest req;
@@ -433,6 +433,14 @@ void MissionPlanner::executeDESCEND()
 
 void MissionPlanner::executeSEARCH()
 {
+    if (phase_iteration_count_ == 0) {
+        target_found_ = false;
+        target_spotted_ = false;
+        search_in_progress_ = false;
+    }
+
+    phase_iteration_count_++;
+
     if (!search_in_progress_) {
         search_pattern_ = generateSearchPattern();
         search_index_ = 0;
@@ -615,7 +623,7 @@ void MissionPlanner::executeEXIT()
     if (phase_iteration_count_ >= 1) {
         return;
     }
-    // home position needs to be adjustable if drift is present
+    
     publishWaypoint(Eigen::Vector3f(
         home_position_.pose.position.x, 
         home_position_.pose.position.y, 
@@ -680,7 +688,10 @@ void MissionPlanner::executeEMERGENCY()
 {
     RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "EMERGENCY: Battery critically low (%.1f%%) - executing emergency landing", context_.battery_percentage);
 
-    //TODO: Implement publishing of landing waypoint
+    //TODO: Improve the emergency logic
+    mission_sequencer::msg::MissionRequest req;
+    req.request = mission_sequencer::msg::MissionRequest::LAND;
+    pub_mission_request_->publish(req);
 }
 
 
@@ -977,7 +988,7 @@ void MissionPlanner::updateMissionPhase()
             break;
 
         case MissionPhase::LAND:
-            if (getTimeSincePhaseStart() > 10.0f) {
+            if (!current_vehicle_armed_) { //improve the checks for landing (checking if it is disarmed isn't enough)
                 transitionToPhase(MissionPhase::IDLE);
                 RCLCPP_INFO(get_logger(), "Mission complete, back to IDLE");
             }
