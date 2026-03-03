@@ -1026,7 +1026,22 @@ void MissionPlanner::executePhase()
 int main(int argc, char ** argv)
 {
   rclcpp::init(argc, argv);
-  rclcpp::spin(std::make_shared<MissionPlanner>());
+
+  auto node = std::make_shared<MissionPlanner>();
+
+  
+  rclcpp::executors::MultiThreadedExecutor exec;
+  exec.add_node(node);
+
+  std::thread spin_thread([&exec]() {
+    exec.spin();
+  });
+
+  rclcpp::on_shutdown([&]() {
+    exec.cancel();
+  });
+
+  spin_thread.join();
   rclcpp::shutdown();
   return 0;
 }

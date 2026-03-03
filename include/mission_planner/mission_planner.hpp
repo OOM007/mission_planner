@@ -35,6 +35,7 @@
 #include <vector>
 #include <cstddef>
 #include <string>
+#include <thread>
 
 class MissionPlanner : public rclcpp::Node
 {
