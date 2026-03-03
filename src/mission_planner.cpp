@@ -104,10 +104,12 @@ void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw
         w = waypointTransform::mapToOdom(w, this->T_map_odom_);
     }
 
+    const double yaw_odom_rad = w.yaw;
+
     wp.x = w.x;
     wp.y = w.y;
     wp.z = w.z;
-    wp.yaw = w.yaw;
+    wp.yaw = static_cast<float>(yaw_odom_rad * (180.0 / M_PI));
     wp.holdtime = holdtime;
 
     previous_waypoint_ = Eigen::Vector3f(wp.x, wp.y, wp.z);
@@ -131,7 +133,7 @@ void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw
         debug_msg.pose.position.z = wp.z;
 
         tf2::Quaternion q;
-        q.setRPY(0.0, 0.0, wp.yaw);
+        q.setRPY(0.0, 0.0, yaw_odom_rad);
         debug_msg.pose.orientation = tf2::toMsg(q);
 
         pub_debug_waypoint->publish(debug_msg);
@@ -314,10 +316,10 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
     seq.reserve(pts.size());
     for (int i = 0; i < (int)pts.size(); ++i) seq.push_back(pts[(start_id + i) % pts.size()]);
 
-    auto normAngle = [](double deg) {
-        deg = std::fmod(deg, 360.0);
-        if (deg < 0) deg += 360.0;
-        return deg;
+    auto normAngleRad = [](double rad) {
+        rad = std::fmod(rad, 2.0 * M_PI);
+        if (rad < 0) rad += 2.0 * M_PI;
+        return rad;
     };
 
 
@@ -333,14 +335,15 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
         double dx = cx - x;
         double dy = cy - y;
 
-        double yaw_deg = std::atan2(dy, dx) * 180.0 / M_PI + zero_offset_angle;
-        yaw_deg = normAngle(yaw_deg);
+        const double zero_offset_rad = cfg_.zero_offset_angle * (M_PI / 180.0); // config interpreted as degrees
+        double yaw_rad = std::atan2(dy, dx) + zero_offset_rad;
+        yaw_rad = normAngleRad(yaw_rad);
 
         pattern.push_back({Eigen::Vector3f(
             (float)(transit_position_.pose.position.x + translation_x + x),
             (float)(transit_position_.pose.position.y + translation_y + y),
             height
-        ), yaw_deg, wait_time});
+        ), static_cast<float>(yaw_rad), wait_time});
     }
 
     return pattern;
@@ -613,7 +616,7 @@ void MissionPlanner::executeRETURN()
     publishWaypoint(Eigen::Vector3f(
         transit_position_.pose.position.x, 
         transit_position_.pose.position.y, 
-        transit_position_.pose.position.z), 180.0f, 0.0f);
+        transit_position_.pose.position.z), static_cast<float>(M_PI), 0.0f);
 
     phase_iteration_count_++;
 }
@@ -627,7 +630,8 @@ void MissionPlanner::executeEXIT()
     publishWaypoint(Eigen::Vector3f(
         home_position_.pose.position.x, 
         home_position_.pose.position.y, 
-        home_position_.pose.position.z + (float)(cfg_.takeoff_altitude - cfg_.land_altitude)), 180.0f, 0.0f);
+        home_position_.pose.position.z + (float)(cfg_.takeoff_altitude - cfg_.land_altitude)),
+        static_cast<float>(M_PI), 0.0f);
 
     phase_iteration_count_++;
 }
