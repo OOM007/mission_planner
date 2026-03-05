@@ -9,6 +9,8 @@ struct MissionPlannerConfig {
 
   bool do_mission_on_start;
   bool do_mission_once;
+
+  int mission_repetitions;
   
   double battery_warn_threshold;
   double battery_critical_threshold;

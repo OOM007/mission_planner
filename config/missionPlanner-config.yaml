@@ -6,6 +6,8 @@ mission_planner:
     do_mission_on_start: true
     do_mission_once: true
 
+    mission_repetitions: 2
+
     battery_warn_threshold: 15.0 # in percentage from 1..100
     battery_critical_threshold: 5.0
 
@@ -14,7 +16,7 @@ mission_planner:
     
     takeoff_altitude: 2.0 # hovering altitude after takeoff
     land_altitude: 0.0 # landing pad altitude
-    search_altitude: 1.0
+    search_altitude: 1.5
     transit_altitude: 2.0
 
     target_hover_time: 20.0

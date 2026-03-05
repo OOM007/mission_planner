@@ -7,6 +7,8 @@ void MissionPlannerConfig::declare(rclcpp::Node & node)
 
   node.declare_parameter<bool>("do_mission_on_start", false);
   node.declare_parameter<bool>("do_mission_once", true);
+
+   node.declare_parameter<int>("mission_repetitions", 1);
   
   node.declare_parameter<double>("battery_warn_threshold", 15.0);
   node.declare_parameter<double>("battery_critical_threshold", 5.0);
@@ -51,6 +53,7 @@ MissionPlannerConfig MissionPlannerConfig::load(rclcpp::Node & node)
     node.get_parameter("battery_check_enabled", cfg.battery_check_enabled);
     node.get_parameter("do_mission_on_start", cfg.do_mission_on_start);
     node.get_parameter("do_mission_once", cfg.do_mission_once);
+    node.get_parameter("mission_repetitions", cfg.mission_repetitions);
     node.get_parameter("battery_warn_threshold", cfg.battery_warn_threshold);
     node.get_parameter("battery_critical_threshold", cfg.battery_critical_threshold);
     node.get_parameter("approach_distance", cfg.approach_distance);

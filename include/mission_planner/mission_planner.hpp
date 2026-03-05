@@ -132,6 +132,7 @@ private:
   bool current_vehicle_armed_{false};
   bool ready_to_takeoff_{false};
   bool mission_executed_{false};
+  int mission_count_{0};
   
   //target detection and validation
   bool search_in_progress_{false};

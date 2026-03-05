@@ -10,10 +10,10 @@ using namespace std::chrono_literals;
 MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options) : 
     rclcpp::Node("mission_planner", options), 
     tf_buffer_(this->get_clock()), 
-    tf_listener_(tf_buffer_, this, false)
+    tf_listener_(tf_buffer_, this, true)
 {
     sub_target_detection_ = create_subscription<geometry_msgs::msg::PointStamped>(
-        "yolo/point_of_interest", rclcpp::QoS(1), std::bind(&MissionPlanner::cbTargetDetection, this, std::placeholders::_1)
+        "bbox_points_map", rclcpp::QoS(1), std::bind(&MissionPlanner::cbTargetDetection, this, std::placeholders::_1)
     );
     sub_current_position_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         "mavros/local_position/pose", rclcpp::QoS(1).best_effort(), std::bind(&MissionPlanner::cbCurrentPosition, this, std::placeholders::_1)
@@ -27,7 +27,7 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options) :
         "mission/request", rclcpp::QoS(1), std::bind(&MissionPlanner::cbMissionRequest, this, std::placeholders::_1)
     );
     sub_pad_vehicle_pose_ = create_subscription<geometry_msgs::msg::PoseStamped>(
-        "/aruco_pose_local", rclcpp::QoS(10), [this](geometry_msgs::msg::PoseStamped::SharedPtr msg)
+        "/aruco/drone_pose", rclcpp::QoS(10), [this](geometry_msgs::msg::PoseStamped::SharedPtr msg)
         {pad_vehicle_pose_ = *msg; last_pad_pose_time_ = msg->header.stamp;}
     );
 
@@ -78,6 +78,8 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options) :
     current_vehicle_armed_ = false;
     ready_to_takeoff_ = false;
     mission_executed_ = false;
+
+    mission_count_ = 0;
 
     search_in_progress_ = false;
     target_found_ = false;
@@ -237,7 +239,7 @@ void MissionPlanner::cbMissionRequest(const std_msgs::msg::String::SharedPtr msg
     }
   } else if (msg->data == "ABORT_MISSION") {
     transitionToPhase(MissionPhase::EMERGENCY);
-    RCLCPP_WARN(get_logger(), "Mission abort requested - returning home");
+    RCLCPP_WARN(get_logger(), "Mission abort requested - landing initiated");
   }
 }
 
@@ -353,7 +355,7 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
 // execution logic
 void MissionPlanner::executeIDLE()
 {
-    if (!current_vehicle_armed_ && (int)(now() - phase_start_time_).seconds() % 5 == 0 && (!cfg_.do_mission_once || !mission_executed_)) {
+    if (!current_vehicle_armed_ && (int)(now() - phase_start_time_).seconds() % 5 == 0 && (!cfg_.do_mission_once || !mission_executed_) && mission_count_ < cfg_.mission_repetitions) {
         RCLCPP_INFO(get_logger(), "Vehicle is disarmed - waiting for arming to start mission");
                 
         mission_sequencer::msg::MissionRequest req;
@@ -645,9 +647,9 @@ void MissionPlanner::executeLAND()
 
     publishWaypoint(
         Eigen::Vector3f(
-            current_pose_.pose.position.x,
-            current_pose_.pose.position.y,
-            current_pose_.pose.position.z),
+            home_position_.pose.position.x,
+            home_position_.pose.position.y,
+            home_position_.pose.position.z + (float)(cfg_.takeoff_altitude - cfg_.land_altitude)),
         static_cast<float>(land_desired_yaw_rad_),
         0.0f
     );
@@ -690,7 +692,7 @@ void MissionPlanner::executeLAND()
 
 void MissionPlanner::executeEMERGENCY()
 {
-    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "EMERGENCY: Battery critically low (%.1f%%) - executing emergency landing", context_.battery_percentage);
+    RCLCPP_ERROR_THROTTLE(get_logger(), *get_clock(), 2000, "EMERGENCY: executing emergency landing");
 
     //TODO: Improve the emergency logic
     mission_sequencer::msg::MissionRequest req;
@@ -817,6 +819,7 @@ bool MissionPlanner::canTransitionTo(MissionPhase new_phase) const
 
         case MissionPhase::TAKEOFF:
             return new_phase == MissionPhase::TRANSIT ||
+                    new_phase == MissionPhase::IDLE ||
                     new_phase == MissionPhase::EMERGENCY;
         
         case MissionPhase::TRANSIT:
@@ -913,6 +916,10 @@ void MissionPlanner::updateMissionPhase()
                  transitionToPhase(MissionPhase::TRANSIT);
                  return;
             }
+            if (!current_vehicle_armed_) {
+                transitionToPhase(MissionPhase::IDLE);
+                RCLCPP_WARN(get_logger(), "Vehicle did not arm properly, return to the IDLE state");
+            }
             break;
 
         case MissionPhase::TRANSIT:
@@ -993,6 +1000,7 @@ void MissionPlanner::updateMissionPhase()
 
         case MissionPhase::LAND:
             if (!current_vehicle_armed_) { //improve the checks for landing (checking if it is disarmed isn't enough)
+                mission_count_++;
                 transitionToPhase(MissionPhase::IDLE);
                 RCLCPP_INFO(get_logger(), "Mission complete, back to IDLE");
             }
