@@ -26,6 +26,10 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options) :
     mission_request_ = create_subscription<std_msgs::msg::String>(
         "mission/request", rclcpp::QoS(1), std::bind(&MissionPlanner::cbMissionRequest, this, std::placeholders::_1)
     );
+    sub_mission_response_ = create_subscription<mission_sequencer::msg::MissionResponse>(
+        "/autonomy/response", rclcpp::QoS(10),
+        std::bind(&MissionPlanner::cbMissionResponse, this, std::placeholders::_1)
+    );
     sub_pad_vehicle_pose_ = create_subscription<geometry_msgs::msg::PoseStamped>(
         "/aruco/drone_pose", rclcpp::QoS(10), [this](geometry_msgs::msg::PoseStamped::SharedPtr msg)
         {pad_vehicle_pose_ = *msg; last_pad_pose_time_ = msg->header.stamp;}
@@ -92,7 +96,7 @@ MissionPlanner::MissionPlanner(const rclcpp::NodeOptions & options) :
 
 
 // publish helpers
-void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw, float holdtime)
+void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw, float holdtime, WaypointFrame frame)
 {
     mission_sequencer::msg::MissionWaypoint wp;
 
@@ -102,7 +106,7 @@ void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw
     w.z = position.z();
     w.yaw = yaw;
 
-    if (this->map_odom_initialized_) {
+    if (frame == WaypointFrame::MAP && this->map_odom_initialized_) {
         w = waypointTransform::mapToOdom(w, this->T_map_odom_);
     }
 
@@ -115,6 +119,7 @@ void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw
     wp.holdtime = holdtime;
 
     previous_waypoint_ = Eigen::Vector3f(wp.x, wp.y, wp.z);
+    waypoint_completed_by_sequencer_ = false;
 
     mission_sequencer::msg::MissionWaypointArray msg;
     msg.waypoints.clear();
@@ -189,9 +194,9 @@ void MissionPlanner::cbTargetDetection(const geometry_msgs::msg::PointStamped::S
             current_target_.position
         );
 
-        RCLCPP_INFO(get_logger(), "Target in %s: (%.2f, %.2f, %.2f)",
-                    target_frame.c_str(),
-                    current_target_.position.x(), current_target_.position.y(), current_target_.position.z());
+        //RCLCPP_INFO(get_logger(), "Target in %s: (%.2f, %.2f, %.2f)",
+        //            target_frame.c_str(),
+        //            current_target_.position.x(), current_target_.position.y(), current_target_.position.z());
 
     } catch (const tf2::TransformException &ex) {
         RCLCPP_WARN(get_logger(), "TF transform failed (%s -> %s): %s",
@@ -243,6 +248,14 @@ void MissionPlanner::cbMissionRequest(const std_msgs::msg::String::SharedPtr msg
   }
 }
 
+void MissionPlanner::cbMissionResponse(const mission_sequencer::msg::MissionResponse::SharedPtr msg)
+{
+    if (msg->completed &&
+        msg->request.request == mission_sequencer::msg::MissionRequest::UNDEF) {
+        waypoint_completed_by_sequencer_ = true;
+    }
+}
+
 
 // heleprs
 static Eigen::Vector3f vectorFromPosition(const geometry_msgs::msg::PoseStamped & pose)
@@ -284,9 +297,10 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
     float height = (float)cfg_.search_altitude - cfg_.land_altitude;
     float wait_time = 2.0f;
 
-    double half_extent = cfg_.half_extent;
+    double half_extent = cfg_.half_extent; // not used for now
 
-    int minX = -half_extent, maxX = half_extent, minY = -half_extent, maxY = half_extent;
+    int minX = -cfg_.X_extent/2, maxX = cfg_.X_extent/2, minY = -cfg_.Y_extent/2, maxY = cfg_.Y_extent/2;
+
     int step = cfg_.step;
     int startX = cfg_.search_startPos_x, startY = cfg_.search_startPos_y;
     double zero_offset_angle = 0.0;
@@ -378,7 +392,7 @@ void MissionPlanner::executeIDLE()
     publishWaypoint(Eigen::Vector3f(
         current_pose_.pose.position.x, 
         current_pose_.pose.position.y, 
-        current_pose_.pose.position.z), 0.0f, 0.0f);
+        current_pose_.pose.position.z), 0.0f, 0.0f, WaypointFrame::ODOM);
 }
 
 void MissionPlanner::executeTAKEOFF()
@@ -398,7 +412,7 @@ void MissionPlanner::executeTAKEOFF()
     publishWaypoint(Eigen::Vector3f(
         current_pose_.pose.position.x, 
         current_pose_.pose.position.y, 
-        current_pose_.pose.position.z + (float)(cfg_.takeoff_altitude - cfg_.land_altitude)), 0.0f, 0.0f);
+        current_pose_.pose.position.z + (float)(cfg_.takeoff_altitude - cfg_.land_altitude)), 0.0f, 0.0f, WaypointFrame::ODOM);
     
     mission_sequencer::msg::MissionRequest req;
     req.request = mission_sequencer::msg::MissionRequest::TAKEOFF;
@@ -466,7 +480,8 @@ void MissionPlanner::executeSEARCH()
     }
 
     float d2d = distance2D(vectorFromPosition(current_pose_), previous_waypoint_);
-    if (d2d > cfg_.waypoint_reached_tolerance) {
+    if (!waypoint_completed_by_sequencer_ &&
+        d2d > cfg_.waypoint_reached_tolerance) {
         return;
     }
 
@@ -505,7 +520,7 @@ void MissionPlanner::executeTARGET_DETECTED()
         publishWaypoint(Eigen::Vector3f(
                 current_pose_.pose.position.x,
                 current_pose_.pose.position.y,
-                current_pose_.pose.position.z), yaw, 0.0f);
+                current_pose_.pose.position.z), yaw, 0.0f, WaypointFrame::ODOM);
 
         target_found_ = false;
         target_spotted_ = false;
@@ -604,7 +619,7 @@ void MissionPlanner::executeAPPROACH()
     publishWaypoint(Eigen::Vector3f(
         current_target_.position.x(), 
         current_target_.position.y(), 
-        (float)(cfg_.approach_distance)), 0.0f, 0.0f);
+        (float)(cfg_.approach_distance)), 0.0f, 0.0f, WaypointFrame::ODOM);
 
     phase_iteration_count_++;
 }
@@ -924,7 +939,7 @@ void MissionPlanner::updateMissionPhase()
 
         case MissionPhase::TRANSIT:
             d2d = MissionPlanner::distance2D(vectorFromPosition(current_pose_), previous_waypoint_);
-            if (d2d < cfg_.waypoint_reached_tolerance) {
+            if (waypoint_completed_by_sequencer_ || d2d < cfg_.waypoint_reached_tolerance) {
                 transitionToPhase(MissionPhase::DESCEND);
                 return;
             }
@@ -964,8 +979,12 @@ void MissionPlanner::updateMissionPhase()
             break;
 
         case MissionPhase::APPROACH:
+            if (phase_iteration_count_ == 0) {
+                break;
+            }
+            
             d2d = MissionPlanner::distance2D(vectorFromPosition(current_pose_), previous_waypoint_);
-            if (d2d < cfg_.waypoint_reached_tolerance) {
+            if (waypoint_completed_by_sequencer_ || d2d < cfg_.waypoint_reached_tolerance) {
                 transitionToPhase(MissionPhase::HOVER);
             } else if (context_.battery_percentage < (float)cfg_.battery_warn_threshold) {
                 transitionToPhase(MissionPhase::RETURN);
@@ -982,7 +1001,7 @@ void MissionPlanner::updateMissionPhase()
 
         case MissionPhase::RETURN:
             d2d = MissionPlanner::distance2D(vectorFromPosition(current_pose_), previous_waypoint_);
-            if (d2d < cfg_.waypoint_reached_tolerance) {
+            if (waypoint_completed_by_sequencer_ || d2d < cfg_.waypoint_reached_tolerance) {
                 transitionToPhase(MissionPhase::EXIT);
             } else if (context_.battery_percentage < (float)cfg_.battery_critical_threshold) {
                 transitionToPhase(MissionPhase::EMERGENCY);
@@ -991,7 +1010,7 @@ void MissionPlanner::updateMissionPhase()
 
         case MissionPhase::EXIT:
             d2d = MissionPlanner::distance2D(vectorFromPosition(current_pose_), previous_waypoint_);
-            if (d2d < cfg_.waypoint_reached_tolerance) {
+            if (waypoint_completed_by_sequencer_ || d2d < cfg_.waypoint_reached_tolerance) {
                 transitionToPhase(MissionPhase::LAND);
             } else if (context_.battery_percentage < (float)cfg_.battery_critical_threshold) {
                 transitionToPhase(MissionPhase::EMERGENCY);

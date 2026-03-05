@@ -32,6 +32,8 @@ mission_planner:
       
       zero_offset_angle: 0.0
       half_extent: 1 # half-width of a search area
+      X_extent: 1 # X extent of the search area in meters
+      Y_extent: 1 # Y extent of the search area in meters
       step: 1
       max_waypoints: 20
       max_search_time: 30.0

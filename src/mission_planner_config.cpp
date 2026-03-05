@@ -31,6 +31,8 @@ void MissionPlannerConfig::declare(rclcpp::Node & node)
 
   node.declare_parameter<double>("search.zero_offset_angle", 0.0);
   node.declare_parameter<int>("search.half_extent", 2);
+  node.declare_parameter<int>("search.X_extent", 1);
+  node.declare_parameter<int>("search.Y_extent", 1);
   node.declare_parameter<int>("search.step", 1);
   node.declare_parameter<int>("search.max_waypoints", 20);
   node.declare_parameter<double>("search.max_search_time", 60.0);
@@ -69,6 +71,8 @@ MissionPlannerConfig MissionPlannerConfig::load(rclcpp::Node & node)
     node.get_parameter("search.start_pos.y", cfg.search_startPos_y);
     node.get_parameter("search.zero_offset_angle", cfg.zero_offset_angle);
     node.get_parameter("search.half_extent", cfg.half_extent);
+    node.get_parameter("search.X_extent", cfg.X_extent);
+    node.get_parameter("search.Y_extent", cfg.Y_extent);
     node.get_parameter("search.step", cfg.step);
     node.get_parameter("search.max_waypoints", cfg.max_waypoints);
     node.get_parameter("search.max_search_time", cfg.max_search_time);

@@ -18,6 +18,7 @@
 #include <mission_sequencer/msg/mission_waypoint_array.hpp>
 #include <mission_sequencer/msg/mission_waypoint.hpp>
 #include <mission_sequencer/msg/mission_request.hpp>
+#include <mission_sequencer/msg/mission_response.hpp>
 
 #include "mavros_msgs/msg/state.hpp"
 
@@ -89,6 +90,12 @@ private:
     float hold_time{0.0f};
   };
 
+  enum class WaypointFrame
+  {
+    MAP,
+    ODOM
+  };
+
   // subscriptions and publishers
   rclcpp::Subscription<geometry_msgs::msg::PointStamped>::SharedPtr sub_target_detection_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_current_position_;
@@ -96,6 +103,7 @@ private:
   rclcpp::Subscription<std_msgs::msg::String>::SharedPtr mission_request_;
   rclcpp::Subscription<mavros_msgs::msg::State>::SharedPtr state_sub_;
   rclcpp::Subscription<geometry_msgs::msg::PoseStamped>::SharedPtr sub_pad_vehicle_pose_; 
+  rclcpp::Subscription<mission_sequencer::msg::MissionResponse>::SharedPtr sub_mission_response_;
 
   rclcpp::Publisher<geometry_msgs::msg::PoseStamped>::SharedPtr pub_debug_waypoint;
   rclcpp::Publisher<mission_sequencer::msg::MissionRequest>::SharedPtr pub_mission_request_;
@@ -133,6 +141,7 @@ private:
   bool ready_to_takeoff_{false};
   bool mission_executed_{false};
   int mission_count_{0};
+  bool waypoint_completed_by_sequencer_{false};
   
   //target detection and validation
   bool search_in_progress_{false};
@@ -175,6 +184,7 @@ private:
   void stateCallback(const mavros_msgs::msg::State::SharedPtr msg);
   void cbBattery(const sensor_msgs::msg::BatteryState::SharedPtr msg);
   void cbMissionRequest(const std_msgs::msg::String::SharedPtr msg);
+  void cbMissionResponse(const mission_sequencer::msg::MissionResponse::SharedPtr msg);
 
   // calibration
   void updateMapOdomAlignment();
@@ -203,7 +213,7 @@ private:
   void executeEMERGENCY();
 
   // publish helpers
-  void publishWaypoint(const Eigen::Vector3f &position, float yaw, float holdtime);
+  void publishWaypoint(const Eigen::Vector3f &position, float yaw, float holdtime, WaypointFrame frame = WaypointFrame::MAP);
   void publishWaypointList(const std::vector<Eigen::Vector3f> &waypoints);
 
   // helpers

@@ -32,6 +32,8 @@ struct MissionPlannerConfig {
 
   double zero_offset_angle;
   int half_extent;
+  int X_extent;
+  int Y_extent;
   int step;
   int max_waypoints;
   double max_search_time;
