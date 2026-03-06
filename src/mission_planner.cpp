@@ -184,7 +184,23 @@ void MissionPlanner::cbTargetDetection(const geometry_msgs::msg::PointStamped::S
 
         tf2::doTransform(p_in, p_out, T);
 
-        current_target_.position << (float)p_out.point.x, (float)p_out.point.y, (float)p_out.point.z;
+        const Eigen::Vector3f transformed_target(
+            static_cast<float>(p_out.point.x),
+            static_cast<float>(p_out.point.y),
+            static_cast<float>(p_out.point.z));
+
+        if (!isTargetWithinSearchBounds(transformed_target)) {
+            RCLCPP_WARN_THROTTLE(
+                get_logger(),
+                *get_clock(),
+                2000,
+                "Target detection outside search bounds, ignoring (x=%.2f, y=%.2f)",
+                transformed_target.x(),
+                transformed_target.y());
+            return;
+        }
+
+        current_target_.position = transformed_target;
 
         current_target_.detection_time = now();
         target_spotted_ = true;
@@ -290,6 +306,30 @@ float MissionPlanner::distance2D(const Eigen::Vector3f & point1, const Eigen::Ve
     return (p1_2d - p2_2d).norm();
 }
 
+bool MissionPlanner::isTargetWithinSearchBounds(const Eigen::Vector3f & target_position) const
+{
+    const int min_x = -cfg_.X_extent / 2;
+    const int max_x = cfg_.X_extent / 2;
+    const int min_y = -cfg_.Y_extent / 2;
+    const int max_y = cfg_.Y_extent / 2;
+
+    // Keep the boundary logic aligned with generateSearchPattern().
+    const float translation_x =
+        static_cast<float>(max_x * static_cast<int>(std::abs(transit_position_.pose.position.x) > 0.0));
+    const float translation_y =
+        static_cast<float>(max_y * static_cast<int>(std::abs(transit_position_.pose.position.y) > 0.0));
+
+    const float search_min_x = static_cast<float>(transit_position_.pose.position.x) + translation_x + static_cast<float>(min_x);
+    const float search_max_x = static_cast<float>(transit_position_.pose.position.x) + translation_x + static_cast<float>(max_x);
+    const float search_min_y = static_cast<float>(transit_position_.pose.position.y) + translation_y + static_cast<float>(min_y);
+    const float search_max_y = static_cast<float>(transit_position_.pose.position.y) + translation_y + static_cast<float>(max_y);
+
+    return target_position.x() >= search_min_x &&
+           target_position.x() <= search_max_x &&
+           target_position.y() >= search_min_y &&
+           target_position.y() <= search_max_y;
+}
+
 std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPattern() const
 {
     std::vector<GenericWaypoint> pattern;
@@ -305,8 +345,8 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
     int startX = cfg_.search_startPos_x, startY = cfg_.search_startPos_y;
     double zero_offset_angle = 0.0;
 
-    int translation_x = (cfg_.half_extent * (int)(std::abs(transit_position_.pose.position.x) > 0));
-    int translation_y = (cfg_.half_extent * (int)(std::abs(transit_position_.pose.position.y) > 0));
+    int translation_x = (maxX * (int)(std::abs(transit_position_.pose.position.x) > 0));
+    int translation_y = (maxY * (int)(std::abs(transit_position_.pose.position.y) > 0));
 
     if (step <= 0) throw std::invalid_argument("step must be > 0");
     if ((maxX - minX) % step != 0 || (maxY - minY) % step != 0)

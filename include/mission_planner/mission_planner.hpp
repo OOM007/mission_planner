@@ -221,6 +221,7 @@ private:
   static float distance(const Eigen::Vector3f &a, const Eigen::Vector3f &b);
   static float distance2D(const Eigen::Vector3f &point1, const Eigen::Vector3f &point2);
   Eigen::Vector3f transitionedVector(const Eigen::Vector3f& vector);
+  bool isTargetWithinSearchBounds(const Eigen::Vector3f &target_position) const;
 
   std::vector<GenericWaypoint> generateSearchPattern() const;
 
