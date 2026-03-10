@@ -111,7 +111,7 @@ The node accepts the following strings on `mission/request`:
 
 ## Parameters
 
-The package ships a default parameter file at [`config/missionPlanner-config.yaml`](/home/oleksandr/ros2_ws/src/mission_planner/config/missionPlanner-config.yaml).
+The package ships a default parameter file at [`config/missionPlanner-config.yaml`](./config/missionPlanner-config.yaml).
 
 ### Mission Control
 
@@ -175,7 +175,7 @@ This launch file starts:
 - `mission_planner_node`
 - parameters from `config/missionPlanner-config.yaml`
 
-The package also contains [`launch/simulation.launch.py`](/home/oleksandr/ros2_ws/src/mission_planner/launch/simulation.launch.py), which starts a PX4 SITL-oriented stack for simulation setup. It launches:
+The package also contains [`launch/simulation.launch.py`](./launch/simulation.launch.py), which starts a PX4 SITL-oriented stack for simulation setup. It launches:
 
 - `MicroXRCEAgent`
 - PX4 SITL with `gz_x500_mono_cam_aruco`
@@ -192,8 +192,8 @@ The package also contains [`launch/simulation.launch.py`](/home/oleksandr/ros2_w
 
 ## Package Contents
 
-- [`src/mission_planner.cpp`](/home/oleksandr/ros2_ws/src/mission_planner/src/mission_planner.cpp): node implementation and state machine
-- [`include/mission_planner/mission_planner.hpp`](/home/oleksandr/ros2_ws/src/mission_planner/include/mission_planner/mission_planner.hpp): node declaration
-- [`src/mission_planner_config.cpp`](/home/oleksandr/ros2_ws/src/mission_planner/src/mission_planner_config.cpp): parameter declaration and loading
-- [`include/mission_planner/landing_pad_estimator.hpp`](/home/oleksandr/ros2_ws/src/mission_planner/include/mission_planner/landing_pad_estimator.hpp): robust map/odom alignment estimation
-- [`include/mission_planner/waypoint_transformer.hpp`](/home/oleksandr/ros2_ws/src/mission_planner/include/mission_planner/waypoint_transformer.hpp): waypoint frame conversion helpers
+- [`src/mission_planner.cpp`](./src/mission_planner.cpp): node implementation and state machine
+- [`include/mission_planner/mission_planner.hpp`](./include/mission_planner/mission_planner.hpp): node declaration
+- [`src/mission_planner_config.cpp`](./src/mission_planner_config.cpp): parameter declaration and loading
+- [`include/mission_planner/landing_pad_estimator.hpp`](./include/mission_planner/landing_pad_estimator.hpp): robust map/odom alignment estimation
+- [`include/mission_planner/waypoint_transformer.hpp`](./include/mission_planner/waypoint_transformer.hpp): waypoint frame conversion helpers
