@@ -8,6 +8,9 @@
 #include <optional>
 #include <vector>
 
+// One buffered observation of the map->odom correction.
+// The estimator keeps only translation and yaw because the planner assumes
+// a planar vehicle motion model for the final home-landing alignment.
 struct Sample {
     Eigen::Vector3d translation{Eigen::Vector3d::Zero()};
     double yaw{0.0};
@@ -57,6 +60,19 @@ static inline Eigen::Isometry3d poseToIsometry(const poseT& pose) {
     return iso;
 }
 
+// Estimates a stable map->odom transform from repeated landing-pad observations.
+//
+// Expected inputs:
+// - pose_map_base: vehicle/base pose expressed in the map-like landing-pad frame
+// - pose_odom_base: vehicle/base pose expressed in odom
+//
+// For each paired observation the estimator computes:
+//   T_map_odom = T_map_base * inverse(T_odom_base)
+//
+// The estimate() method then:
+// 1. computes robust centers from all buffered samples
+// 2. rejects translation/yaw outliers
+// 3. averages the remaining inliers into the final transform
 class LandingPadEstimator {
 public:
     explicit LandingPadEstimator(std::size_t buffer_size = 200)
@@ -67,6 +83,8 @@ public:
         const Eigen::Isometry3d T_map_base  = poseToIsometry(pose_map_base);
         const Eigen::Isometry3d T_odom_base = poseToIsometry(pose_odom_base);
 
+        // Solve for the static frame correction that maps odom-frame poses
+        // into the landing-pad/map frame for this measurement pair.
         const Eigen::Isometry3d T_map_odom = T_map_base * T_odom_base.inverse();
 
         Sample sample;
@@ -96,6 +114,8 @@ public:
             yaws.push_back(sample.yaw);
         }
 
+        // Use component-wise medians as a robust initial center before
+        // computing a cleaner inlier-only average.
         const double mx = median(xs);
         const double my = median(ys);
         const double mz = median(zs);
@@ -116,6 +136,8 @@ public:
             const double dy = sample.translation.y() - my;
             const double dz = sample.translation.z() - mz;
 
+            // XY is the main rejection gate because lateral drift is what
+            // matters most for home-position correction.
             if (std::hypot(dx, dy) > max_deviation_xy) {
                 continue;
             }

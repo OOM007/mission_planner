@@ -78,6 +78,40 @@ During `EXIT` and `LAND`, the node can estimate a `map -> odom` correction from 
 
 This allows late mission phases near home to compensate for drift between the global search frame and the vehicle's odometry frame.
 
+### How `LandingPadEstimator` Works
+
+[`include/mission_planner/landing_pad_estimator.hpp`](./include/mission_planner/landing_pad_estimator.hpp) estimates the static transform between the landing-pad/map frame and the vehicle odometry frame.
+
+For each synchronized pair of observations it receives:
+
+- `pose_map_base`: vehicle pose expressed in the landing-pad or map-like frame
+- `pose_odom_base`: vehicle pose expressed in odom
+
+It computes one candidate transform:
+
+`T_map_odom = T_map_base * inverse(T_odom_base)`
+
+The estimator then keeps a rolling buffer of these candidates and produces a robust estimate in three stages:
+
+1. compute the median translation and circular-mean yaw across the buffer
+2. reject samples whose XY translation or yaw deviate too much from that center
+3. average the remaining inliers into the final `4x4` transform
+
+Only translation and yaw are estimated. Roll and pitch are intentionally ignored because the planner only needs a planar correction for waypoint projection near home.
+
+### What `waypoint_transformer.hpp` Does
+
+[`include/mission_planner/waypoint_transformer.hpp`](./include/mission_planner/waypoint_transformer.hpp) contains the lightweight frame-conversion helpers used when the planner needs to express a waypoint in a different frame.
+
+It provides:
+
+- `T_from_xyz_yaw()`: builds a `4x4` transform from `x, y, z, yaw`
+- `xyz_yaw_from_T()`: extracts `x, y, z, yaw` from a transform
+- `mapToOdom()`: converts a waypoint from the planner's map frame into the odom frame expected by `mission_sequencer`
+- `odomToMap()`: inverse conversion, useful for debugging
+
+This is used in `publishWaypoint()`: waypoints are planned in map coordinates, but once `T_map_odom` has been estimated, they are projected into odom before being published. Yaw is kept in radians inside the helper and later converted to degrees only at the mission message boundary.
+
 ## ROS Interfaces
 
 ### Subscribed Topics
