@@ -89,8 +89,9 @@ void MissionPlannerConfig::validate() const
     };
 
     require_positive(step, "search.step");
-    require_positive(half_extent, "search.half_extent");
-    
+    require_positive(X_extent, "search.X_extent");
+    require_positive(Y_extent, "search.Y_extent");
+
     if (max_waypoints <= 0) throw std::invalid_argument("search.max_waypoints must be > 0");
 
     if (battery_warn_threshold < 0 || battery_warn_threshold > 100)
