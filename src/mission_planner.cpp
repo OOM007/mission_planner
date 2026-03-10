@@ -106,6 +106,8 @@ void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw
     w.z = position.z();
     w.yaw = yaw;
 
+    // Mission waypoints are planned in map frame but the sequencer consumes odom.
+    // Convert only after the map->odom alignment has been estimated.
     if (frame == WaypointFrame::MAP && this->map_odom_initialized_) {
         w = waypointTransform::mapToOdom(w, this->T_map_odom_);
     }
@@ -115,6 +117,7 @@ void MissionPlanner::publishWaypoint(const Eigen::Vector3f & position, float yaw
     wp.x = w.x;
     wp.y = w.y;
     wp.z = w.z;
+    // Mission sequencer expects yaw in degrees while the planner stores it in radians.
     wp.yaw = static_cast<float>(yaw_odom_rad * (180.0 / M_PI));
     wp.holdtime = holdtime;
 
@@ -170,6 +173,8 @@ void MissionPlanner::cbTargetDetection(const geometry_msgs::msg::PointStamped::S
     }
 
     try {
+        // A zero timestamp means the detector did not provide synchronized time,
+        // so fall back to the latest available transform.
         auto use_time = (p_in.header.stamp.sec == 0 && p_in.header.stamp.nanosec == 0)
             ? tf2::TimePointZero
             : tf2::TimePoint(std::chrono::seconds(p_in.header.stamp.sec) +
@@ -189,6 +194,8 @@ void MissionPlanner::cbTargetDetection(const geometry_msgs::msg::PointStamped::S
             static_cast<float>(p_out.point.y),
             static_cast<float>(p_out.point.z));
 
+        // Ignore detections outside the active search box to avoid chasing
+        // stale observations or objects from a neighboring sector.
         if (!isTargetWithinSearchBounds(transformed_target)) {
             RCLCPP_WARN_THROTTLE(
                 get_logger(),
@@ -313,7 +320,7 @@ bool MissionPlanner::isTargetWithinSearchBounds(const Eigen::Vector3f & target_p
     const int min_y = -cfg_.Y_extent / 2;
     const int max_y = cfg_.Y_extent / 2;
 
-    // Keep the boundary logic aligned with generateSearchPattern().
+    // Recenter the canonical search rectangle into the currently active transit sector.
     const float translation_x =
         static_cast<float>(max_x * static_cast<int>(std::abs(transit_position_.pose.position.x) > 0.0));
     const float translation_y =
@@ -337,8 +344,6 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
     float height = (float)cfg_.search_altitude - cfg_.land_altitude;
     float wait_time = 2.0f;
 
-    double half_extent = cfg_.half_extent; // not used for now
-
     int minX = -cfg_.X_extent/2, maxX = cfg_.X_extent/2, minY = -cfg_.Y_extent/2, maxY = cfg_.Y_extent/2;
 
     int step = cfg_.step;
@@ -355,6 +360,8 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
     std::vector<std::pair<int,int>> pts;
     pts.reserve(2 * ((maxX - minX) / step + (maxY - minY) / step) + 4);
 
+    // Build a perimeter sweep and later rotate it so the search starts
+    // from the configured edge point.
     for(int x = minX; x <= maxX; x+=step) pts.push_back({x, minY});
     for(int y = minY + step; y <= maxY; y+=step) pts.push_back({maxX, y});
     for(int x = maxX - step; x >= minX; x-=step) pts.push_back({x, maxY});
@@ -391,6 +398,7 @@ std::vector<MissionPlanner::GenericWaypoint> MissionPlanner::generateSearchPatte
         double dx = cx - x;
         double dy = cy - y;
 
+        // Face each waypoint toward the search area center, with an optional operator offset.
         const double zero_offset_rad = cfg_.zero_offset_angle * (M_PI / 180.0); // config interpreted as degrees
         double yaw_rad = std::atan2(dy, dx) + zero_offset_rad;
         yaw_rad = normAngleRad(yaw_rad);
@@ -437,6 +445,8 @@ void MissionPlanner::executeIDLE()
 
 void MissionPlanner::executeTAKEOFF()
 {
+    // TAKEOFF is issued once; phase progression is handled by updateMissionPhase()
+    // after the altitude target is actually reached.
     if (phase_iteration_count_ >= 1) {
         return;
     }
@@ -493,6 +503,8 @@ void MissionPlanner::executeDESCEND()
 void MissionPlanner::executeSEARCH()
 {
     if (phase_iteration_count_ == 0) {
+        // Reset search-specific state only on entry so later timer ticks continue
+        // the current pattern instead of restarting it.
         target_found_ = false;
         target_spotted_ = false;
         search_in_progress_ = false;
@@ -519,6 +531,8 @@ void MissionPlanner::executeSEARCH()
         return;
     }
 
+    // Advance only after the current waypoint is confirmed by the sequencer
+    // or the vehicle is already within the planner tolerance.
     float d2d = distance2D(vectorFromPosition(current_pose_), previous_waypoint_);
     if (!waypoint_completed_by_sequencer_ &&
         d2d > cfg_.waypoint_reached_tolerance) {
@@ -537,10 +551,14 @@ void MissionPlanner::executeSEARCH()
 
 void MissionPlanner::executeTARGET_DETECTED()
 {
+    // Treat raw detections as a candidate track first; only promote to a real target
+    // after enough temporally consistent hits have been accumulated.
+    // Note that the mission_planner has refresh rate of 1Hz
+    // so the required hits and confirm_time must be set accordingly.
     const int required_hits = 5;
-    const int required_consecutive_hits = 3;
+    const int required_consecutive_hits = 2;
     const int allowed_misses = 5;
-    const float max_confirm_time_s = 3.0f;
+    const float max_confirm_time_s = 10.0f;
     const float max_stale_detection_s = 1.0f;
     
     const float match_radius = std::max(0.25f, static_cast<float>(cfg_.waypoint_reached_tolerance) * 2.0f);
@@ -596,6 +614,7 @@ void MissionPlanner::executeTARGET_DETECTED()
             const float d = distance(target_candidate_position_, det);
 
             if (d <= match_radius) {
+                // Smooth the candidate position to reduce detector jitter before commit.
                 target_candidate_position_ = 0.7f * target_candidate_position_ + 0.3 * det;
 
                 target_candidate_hits_++;
@@ -651,6 +670,20 @@ void MissionPlanner::executeTARGET_DETECTED()
 }
 
 void MissionPlanner::executeAPPROACH()
+{
+    if (phase_iteration_count_ >= 1) {
+        return;
+    }
+
+    publishWaypoint(Eigen::Vector3f(
+        current_target_.position.x(), 
+        current_target_.position.y(), 
+        (float)(cfg_.approach_distance)), 0.0f, 0.0f, WaypointFrame::ODOM);
+
+    phase_iteration_count_++;
+}
+
+void MissionPlanner::executeHOVER()
 {
     if (phase_iteration_count_ >= 1) {
         return;
@@ -732,6 +765,8 @@ void MissionPlanner::executeLAND()
         land_aligned_cycles_ = 0;
     }
 
+    // Delay the LAND request until yaw has stayed aligned for several cycles,
+    // which avoids handing off while the vehicle is still rotating.
     if (!land_request_sent_ && land_aligned_cycles_ >= land_stable_cycles_required_) {
         mission_sequencer::msg::MissionRequest req_land;
         req_land.request = mission_sequencer::msg::MissionRequest::LAND;
@@ -756,9 +791,10 @@ void MissionPlanner::executeEMERGENCY()
 }
 
 
-// map-odom alignment using aruco marker observations
+// Estimate the map->odom correction from landing-pad observations during exit/landing.
 void MissionPlanner::updateMapOdomAlignment()
 {
+    // Restrict alignment updates to phases near home, where pad detections are expected.
     const bool in_calib_window =
         (current_phase_ == MissionPhase::EXIT) ||
         (current_phase_ == MissionPhase::LAND);
@@ -805,6 +841,8 @@ void MissionPlanner::updateMapOdomAlignment()
         return;
     }
 
+    // Low-pass filter the measured transform so the frame alignment converges
+    // without jumping on noisy marker observations.
     const double alpha = 0.15;
 
     // translation
@@ -831,6 +869,8 @@ void MissionPlanner::updateMapOdomAlignment()
 }
 
 
+// FSM update order matters: update transitions first, execute the active phase,
+// then publish status and optional frame alignment updates.
 //FSM definitions and main loop
 void MissionPlanner::mainDecisionLoop() 
 {
@@ -929,7 +969,7 @@ void MissionPlanner::transitionToPhase(MissionPhase new_phase)
         ready_to_takeoff_ = false;
     }
 
-    // reseting params for landing
+    // LAND entry resets one-shot landing request state so repeated missions start cleanly.
     if (new_phase == MissionPhase::LAND) {
         land_request_sent_ = false;
         land_aligned_cycles_ = 0;
@@ -1081,7 +1121,7 @@ void MissionPlanner::executePhase()
         case MissionPhase::SEARCH: executeSEARCH(); break;
         case MissionPhase::TARGET_DETECTED: executeTARGET_DETECTED(); break;
         case MissionPhase::APPROACH: executeAPPROACH(); break;
-        case MissionPhase::HOVER: executeIDLE(); break; // hover and idle has the same implementation for now
+        case MissionPhase::HOVER: executeHOVER(); break;
         case MissionPhase::RETURN: executeRETURN(); break;
         case MissionPhase::EXIT: executeEXIT(); break;
         case MissionPhase::EMERGENCY: executeEMERGENCY(); break;

@@ -18,7 +18,6 @@ void MissionPlannerConfig::declare(rclcpp::Node & node)
 
   node.declare_parameter<double>("takeoff_altitude", 4.0);
   node.declare_parameter<double>("search_altitude", 2.5);
-  node.declare_parameter<double>("transit_altitude", 4.0);
   node.declare_parameter<double>("land_altitude", 3.0);
 
   node.declare_parameter<double>("target_hover_time", 20.0);
@@ -30,9 +29,8 @@ void MissionPlannerConfig::declare(rclcpp::Node & node)
   node.declare_parameter<int>("search.start_pos.y", -2);
 
   node.declare_parameter<double>("search.zero_offset_angle", 0.0);
-  node.declare_parameter<int>("search.half_extent", 2);
-  node.declare_parameter<int>("search.X_extent", 1);
-  node.declare_parameter<int>("search.Y_extent", 1);
+  node.declare_parameter<int>("search.X_extent", 2);
+  node.declare_parameter<int>("search.Y_extent", 2);
   node.declare_parameter<int>("search.step", 1);
   node.declare_parameter<int>("search.max_waypoints", 20);
   node.declare_parameter<double>("search.max_search_time", 60.0);
@@ -62,7 +60,6 @@ MissionPlannerConfig MissionPlannerConfig::load(rclcpp::Node & node)
     node.get_parameter("waypoint_reached_tolerance", cfg.waypoint_reached_tolerance);
     node.get_parameter("takeoff_altitude", cfg.takeoff_altitude);
     node.get_parameter("search_altitude", cfg.search_altitude);
-    node.get_parameter("transit_altitude", cfg.transit_altitude);
     node.get_parameter("land_altitude", cfg.land_altitude);
     node.get_parameter("target_hover_time", cfg.target_hover_time);
     node.get_parameter("search.center.x", cfg.search_center_x);
@@ -70,7 +67,6 @@ MissionPlannerConfig MissionPlannerConfig::load(rclcpp::Node & node)
     node.get_parameter("search.start_pos.x", cfg.search_startPos_x);
     node.get_parameter("search.start_pos.y", cfg.search_startPos_y);
     node.get_parameter("search.zero_offset_angle", cfg.zero_offset_angle);
-    node.get_parameter("search.half_extent", cfg.half_extent);
     node.get_parameter("search.X_extent", cfg.X_extent);
     node.get_parameter("search.Y_extent", cfg.Y_extent);
     node.get_parameter("search.step", cfg.step);

@@ -17,7 +17,6 @@ mission_planner:
     takeoff_altitude: 2.0 # hovering altitude after takeoff
     land_altitude: 0.0 # landing pad altitude
     search_altitude: 1.5
-    transit_altitude: 2.0
 
     target_hover_time: 20.0
 
@@ -31,14 +30,13 @@ mission_planner:
         y: 0
       
       zero_offset_angle: 0.0
-      half_extent: 1 # half-width of a search area
       X_extent: 1 # X extent of the search area in meters
       Y_extent: 1 # Y extent of the search area in meters
       step: 1
       max_waypoints: 20
       max_search_time: 30.0
 
-    home:
+    home: # home position in the world frame; used for takeoff and as a reference for transit
       position:
         x: 0.0
         y: 0.0

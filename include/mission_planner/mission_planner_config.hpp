@@ -19,7 +19,6 @@ struct MissionPlannerConfig {
   double waypoint_reached_tolerance;
 
   double takeoff_altitude;
-  double transit_altitude;
   double search_altitude;
   double land_altitude;
 
@@ -31,7 +30,6 @@ struct MissionPlannerConfig {
   int search_startPos_y;
 
   double zero_offset_angle;
-  int half_extent;
   int X_extent;
   int Y_extent;
   int step;
