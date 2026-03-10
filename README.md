@@ -1,6 +1,6 @@
 # mission_planner
 
-`mission_planner` is a ROS 2 node that runs a simple autonomous mission state machine for a MAVROS-controlled vehicle. It commands the companion `mission_sequencer` node with waypoints and high-level requests, monitors vehicle state and battery, performs a perimeter search over a configurable area, validates target detections, and returns home for landing.
+`mission_planner` is a ROS 2 node that runs a simple autonomous mission state machine for a MAVROS-controlled vehicle. It commands the companion [`mission_sequencer`](https://github.com/aau-cns/mission_sequencer?tab=readme-ov-file) node with waypoints and high-level requests, monitors vehicle state and battery, performs a perimeter search over a configurable area, validates target detections, and returns home for landing.
 
 ## Node Summary
 
@@ -143,6 +143,11 @@ The node accepts the following strings on `mission/request`:
 - `START_MISSION`: starts the mission from `IDLE` if pose is available
 - `ABORT_MISSION`: transitions to `EMERGENCY` and requests landing
 
+They can be executed by running this command in an external terminal:
+```bash
+ros2 topic pub /mission/request std_msgs/msg/String "{data: <command_string>}" --once
+```
+
 ## Parameters
 
 The package ships a default parameter file at [`config/missionPlanner-config.yaml`](./config/missionPlanner-config.yaml).
@@ -215,6 +220,45 @@ The package also contains [`launch/simulation.launch.py`](./launch/simulation.la
 - PX4 SITL with `gz_x500_mono_cam_aruco`
 - `mavros`
 - `mission_sequencer`
+
+## Dependencies
+
+### ROS Package Dependencies
+
+To build and run `mission_planner_node`, the package depends on:
+
+- `rclcpp`
+- `geometry_msgs`
+- `std_msgs`
+- `sensor_msgs`
+- `mavros_msgs`
+- `mission_sequencer`
+- `tf2`
+- `tf2_ros`
+- `tf2_geometry_msgs`
+- `eigen`
+- `ament_index_python`
+- `launch`
+- `launch_ros`
+
+### Runtime Expectations
+
+For the node to function correctly at runtime, the surrounding system must also provide:
+
+- a MAVROS pose stream on `mavros/local_position/pose`
+- MAVROS state and battery topics on `/mavros/state` and `/mavros/battery`
+- a `mission_sequencer` node listening on `/mission_sequencer/waypoint_list` and `/autonomy/request`
+- a detector publishing `geometry_msgs/msg/PointStamped` on `bbox_points_map`
+- optionally, landing-pad pose estimates on `/aruco/drone_pose` for map/odom alignment near home
+
+### Extra Dependencies For `simulation.launch.py`
+
+The simulation launch file also assumes these external tools are already installed and available:
+
+- `MicroXRCEAgent`
+- PX4 SITL build tree
+- `mavros`
+- Python `pymavlink`
 
 ## Runtime Notes
 

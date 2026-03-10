@@ -13,6 +13,7 @@ find_package(std_msgs REQUIRED)
 find_package(mission_sequencer REQUIRED)
 find_package(sensor_msgs REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(tf2 REQUIRED)
 find_package(tf2_ros REQUIRED)
 find_package(tf2_geometry_msgs REQUIRED)
 
@@ -30,6 +31,7 @@ ament_target_dependencies(mission_planner_node
   std_msgs
   mission_sequencer
   sensor_msgs
+  tf2
   tf2_ros
   tf2_geometry_msgs
 )
