@@ -273,5 +273,5 @@ The simulation launch file also assumes these external tools are already install
 - [`src/mission_planner.cpp`](./src/mission_planner.cpp): node implementation and state machine
 - [`include/mission_planner/mission_planner.hpp`](./include/mission_planner/mission_planner.hpp): node declaration
 - [`src/mission_planner_config.cpp`](./src/mission_planner_config.cpp): parameter declaration and loading
-- [`include/mission_planner/landing_pad_estimator.hpp`](./include/mission_planner/landing_pad_estimator.hpp): robust map/odom alignment estimation
+- [`include/mission_planner/landing_pad_estimator.hpp`](./include/mission_planner/landing_pad_estimator.hpp): map/odom alignment estimation
 - [`include/mission_planner/waypoint_transformer.hpp`](./include/mission_planner/waypoint_transformer.hpp): waypoint frame conversion helpers
