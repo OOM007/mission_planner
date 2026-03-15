@@ -1,9 +1,9 @@
+import os
 from launch import LaunchDescription
 from launch.actions import ExecuteProcess, DeclareLaunchArgument, RegisterEventHandler, TimerAction
 from launch.substitutions import LaunchConfiguration
 from launch_ros.actions import Node
 from launch.event_handlers import OnProcessStart, OnProcessExit
-
 
 def generate_launch_description():
     microxrce_build_dir = LaunchConfiguration("microxrce_build_dir")
@@ -103,14 +103,18 @@ def generate_launch_description():
         )
     )
 
+    # Get default paths from environment variables
+    microxrce_default = os.environ.get("MICROXRCE_BUILD_DIR", "/opt/microxrce/build")
+    px4_default = os.environ.get("PX4_DIR", "/opt/px4")
+
     return LaunchDescription([
         DeclareLaunchArgument(
             "microxrce_build_dir",
-            default_value="/home/oleksandr/Micro-XRCE-DDS-Agent/build",
+            default_value=microxrce_default,
         ),
         DeclareLaunchArgument(
             "px4_dir",
-            default_value="/home/oleksandr/PX4-Autopilot",
+            default_value=px4_default,
         ),
         DeclareLaunchArgument(
             "heartbeat_timeout",
